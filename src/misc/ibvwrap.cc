@@ -68,6 +68,38 @@ ncclResult_t wrap_ibv_symbols(void) {
   container.call; \
   return ncclSuccess;
 
+// _NO_RETURN version of the above check macros to enable ntrace post event recording.
+// Compare to the original version, it sets ncclret without return.
+#define CHECK_NOT_NULL_NO_RETURN(container, internal_name) \
+  if (container.internal_name == NULL) { \
+     WARN("lib wrapper not initialized."); \
+     ncclret = ncclInternalError; \
+  }
+
+#define IBV_PTR_CHECK_ERRNO_NO_RETURN(container, internal_name, call, retval, error_retval, name) \
+  CHECK_NOT_NULL(container, internal_name); \
+  retval = container.call; \
+  if (retval == error_retval) { \
+    WARN("Call to " name " failed with error %s", strerror(errno)); \
+    ncclret = ncclSystemError; \
+  }
+
+#define IBV_PTR_CHECK_NO_RETURN(container, internal_name, call, retval, error_retval, name) \
+  CHECK_NOT_NULL_NO_RETURN(container, internal_name); \
+  retval = container.call; \
+  if (retval == error_retval) { \
+    WARN("Call to " name " failed"); \
+    ncclret = ncclSystemError; \
+  }
+
+#define IBV_INT_CHECK_RET_ERRNO_NO_RETURN(container, internal_name, call, success_retval, name) \
+  CHECK_NOT_NULL_NO_RETURN(container, internal_name); \
+  int ret = container.call; \
+  if (ret != success_retval) { \
+    WARN("Call to " name " failed with error %s", strerror(ret)); \
+    ncclret = ncclSystemError; \
+  }
+
 ncclResult_t wrap_ibv_fork_init() {
   IBV_INT_CHECK(ibvSymbols, ibv_internal_fork_init, ibv_internal_fork_init(), -1, "ibv_fork_init");
 }
@@ -93,15 +125,13 @@ const char *wrap_ibv_get_device_name(struct ibv_device *device) {
 ncclResult_t wrap_ibv_open_device(struct ibv_context **ret, struct ibv_device *device) { /*returns 0 on success, -1 on failure*/
   ncclResult_t ncclret = ncclSuccess;
   IBV_PTR_CHECK_NO_RETURN(ibvSymbols, ibv_internal_open_device, ibv_internal_open_device(device), *ret, NULL, "ibv_open_device");
-  NTRACE_PROFILING_RECORD(ibv_open_device, *ret, device);
+  NTRACE_PROFILING_RECORD(IbvOpenDevice, *ret, device);
   return ncclret;
 }
 
 ncclResult_t wrap_ibv_close_device(struct ibv_context *context) { /*returns 0 on success, -1 on failure*/
-  ncclResult_t ncclret = ncclSuccess;
-  NTRACE_PROFILING_RECORD(ibv_close_device, context);
-  IBV_INT_CHECK_NO_RETURN(ibvSymbols, ibv_internal_close_device, ibv_internal_close_device(context), -1, "ibv_close_device");
-  return ncclret;
+  NTRACE_PROFILING_RECORD(IbvCloseDevice, context);
+  IBV_INT_CHECK(ibvSymbols, ibv_internal_close_device, ibv_internal_close_device(context), -1, "ibv_close_device");
 }
 
 ncclResult_t wrap_ibv_get_async_event(struct ibv_context *context, struct ibv_async_event *event) { /*returns 0 on success, and -1 on error*/
@@ -119,14 +149,14 @@ ncclResult_t wrap_ibv_query_device(struct ibv_context *context, struct ibv_devic
 ncclResult_t wrap_ibv_query_port(struct ibv_context *context, uint8_t port_num, struct ibv_port_attr *port_attr) { /*returns 0 on success, or the value of errno on failure (which indicates the failure reason)*/
   ncclResult_t ncclret = ncclSuccess;
   IBV_INT_CHECK_RET_ERRNO_NO_RETURN(ibvSymbols, ibv_internal_query_port, ibv_internal_query_port(context, port_num, port_attr), 0, "ibv_query_port");
-  NTRACE_PROFILING_RECORD(ibv_query_port, context, port_num, *port_attr);
+  NTRACE_PROFILING_RECORD(IbvQueryPort, context, port_num, *port_attr);
   return ncclret;
 }
 
 ncclResult_t wrap_ibv_query_gid(struct ibv_context *context, uint8_t port_num, int index, union ibv_gid *gid) {
   ncclResult_t ncclret = ncclSuccess;
   IBV_INT_CHECK_RET_ERRNO_NO_RETURN(ibvSymbols, ibv_internal_query_gid, ibv_internal_query_gid(context, port_num, index, gid), 0, "ibv_query_gid");
-  NTRACE_PROFILING_RECORD(ibv_query_gid, context, port_num, index, *gid);
+  NTRACE_PROFILING_RECORD(IbvQueryGid, context, port_num, index, *gid);
   return ncclret;
 }
 
@@ -188,19 +218,19 @@ ncclResult_t wrap_ibv_destroy_cq(struct ibv_cq *cq) {
 }
 
 ncclResult_t wrap_ibv_destroy_qp(struct ibv_qp *qp) {
-  NTRACE_PROFILING_RECORD(ibv_destroy_qp, qp);
+  NTRACE_PROFILING_RECORD(IbvDestroyQp, qp);
   IBV_INT_CHECK_RET_ERRNO(ibvSymbols, ibv_internal_destroy_qp, ibv_internal_destroy_qp(qp), 0, "ibv_destroy_qp");
 }
 
 ncclResult_t wrap_ibv_create_qp(struct ibv_qp **ret, struct ibv_pd *pd, struct ibv_qp_init_attr *qp_init_attr) {
   ncclResult_t ncclret = ncclSuccess;
   IBV_PTR_CHECK_ERRNO_NO_RETURN(ibvSymbols, ibv_internal_create_qp, ibv_internal_create_qp(pd, qp_init_attr), *ret, NULL, "ibv_create_qp");
-  NTRACE_PROFILING_RECORD(ibv_create_qp, *ret, qp_init_attr);
+  NTRACE_PROFILING_RECORD(IbvCreateQp, *ret, qp_init_attr);
   return ncclret;
 }
 
 ncclResult_t wrap_ibv_modify_qp(struct ibv_qp *qp, struct ibv_qp_attr *attr, int attr_mask) { /*returns 0 on success, or the value of errno on failure (which indicates the failure reason)*/
-  NTRACE_PROFILING_RECORD(ibv_modify_qp, qp, attr, attr_mask);
+  NTRACE_PROFILING_RECORD(IbvModifyQp, qp, attr, attr_mask);
   IBV_INT_CHECK_RET_ERRNO(ibvSymbols, ibv_internal_modify_qp, ibv_internal_modify_qp(qp, attr, attr_mask), 0, "ibv_modify_qp");
 }
 

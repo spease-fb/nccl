@@ -89,7 +89,13 @@ ncclResult_t ncclInternalProfilerDumpRecs(int nrecs, struct ncclProfRecord** rec
 ncclProfGetRecFn_t ncclInternalProfilerGetRec;
 ncclResult_t ncclInternalProfilerInit(int* active, ncclProfGetRecFn_t getRec) {
   ncclInternalProfilerGetRec = getRec;
-  if (atoi(getenv("NCCL_PROFILE")) == 1) *active = 1;
+  char *ncclProfileEnv = getenv("NCCL_PROFILE");
+  if (!ncclProfileEnv) {
+    return ncclSuccess;
+  }
+  if (atoi(ncclProfileEnv) == 1) {
+    *active = 1;
+  }
   return ncclSuccess;
 }
 
@@ -110,7 +116,13 @@ ncclProf_v1_t ncclInternalProfiler = {
 ncclResult_t ncclProfInit() {
   void* profPluginLib = dlopen("libnccl-prof.so", RTLD_NOW | RTLD_LOCAL);
   if (profPluginLib) {
+    INFO(NCCL_ALL, "Loaded external profiler");
     ncclProfiler = (ncclProf_v1_t*)dlsym(profPluginLib, "ncclProfPlugin_v1");
+
+    if (!ncclProfiler) {
+      WARN("Error loading ncclProfPlugin_v1 symbol from libnccl-prof.so");
+      return ncclInternalError;
+    }
   } else ncclProfiler = &ncclInternalProfiler;
   ncclProfiler->init(&ncclProfilerActive, ncclProfGetRecs);
   ncclProfilerClockCalibrate();

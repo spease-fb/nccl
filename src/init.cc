@@ -16,6 +16,7 @@
 #include "enqueue.h"
 #include "graph.h"
 #include "argcheck.h"
+#include "profiler.h"
 #include <fcntl.h>
 #include <string.h>
 #include <errno.h>
@@ -1080,6 +1081,8 @@ static ncclResult_t ncclCommInitRankFunc(struct ncclAsyncJob* job_) {
   int cudaDev = job->cudaDev;
   ncclResult_t res = ncclSuccess;
 
+  ncclProfInit();
+
   CUDACHECK(cudaSetDevice(cudaDev));
   // Set the maximum kernel stack size of all kernels to avoid
   // a CUDA memory reconfig on load (c.f. NVSHMEM issue)
@@ -1458,6 +1461,8 @@ static ncclResult_t commReclaim(ncclComm_t comm) {
       }
     }
   }
+
+  ncclProfStop();
 
 exit:
   return ret;

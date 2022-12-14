@@ -11,6 +11,7 @@
 #include "info.h"
 #include "socket.h"
 #include <pthread.h>
+#include "profiler.h"
 
 enum ncclProxyOpState { ncclProxyOpNone, ncclProxyOpReady, ncclProxyOpProgress };
 
@@ -61,7 +62,7 @@ struct ncclProxySubArgs {
   uint64_t done;
   uint64_t end;
   void* requests[NCCL_STEPS];
-  void* profilingEvents[NCCL_STEPS];
+  int profId[NCCL_STEPS];
 };
 
 struct ncclProxyArgs {
@@ -174,6 +175,9 @@ struct ncclProxyState {
 
   // Progress thread
   struct ncclProxyProgressState progressState;
+
+  // Profiler struct
+  struct ncclProfRecord* profilerRecord;
 };
 
 struct ncclProxyConnection {

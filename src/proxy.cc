@@ -9,7 +9,6 @@
 #include "collectives.h"
 #include "socket.h"
 #include "shm.h"
-#include "profiler.h"
 
 // when build NCCL with ntrace_rt.h, we ensure ntrace_rt.h is always
 // referenced via ibvwrap.h after verbs type definition, to obtain type
@@ -203,6 +202,27 @@ ncclResult_t dumpProxyState(struct ncclProxyProgressState* state) {
     pool = pool->next;
     poolIndex++;
   }
+  return ncclSuccess;
+}
+
+#define PROF_TYPE_SLEEP 0
+#define PROF_TYPE_APPEND 1
+
+const char* profTypeNames[] = { "Sleep", "Append", "Send", "Recv" };
+const char* profTsNames[] = { "Start" ,"End", "GPUWait", "SendWait", "RecvWait", "FlushWait", "GPUWait" };
+const char* profKvNames[] = { "Peer", "Step", "Channel" };
+const char profKvFmt[] = { 'd', 'd', 'd' };
+
+ncclResult_t ncclProxyProfilingInit(struct ncclComm* comm) {
+  struct ncclProfRecord* rec;
+  NCCLCHECK(ncclProfAddRec(&rec));
+  rec->rank = comm->rank;
+  rec->typeNames = profTypeNames;
+  rec->tsNames = profTsNames;
+  rec->kvSize = 3;
+  rec->kvNames = profKvNames;
+  rec->kvPrintFmt = profKvFmt;
+  comm->proxyState.profilerRecord = rec;
   return ncclSuccess;
 }
 
@@ -548,7 +568,6 @@ static ncclResult_t ncclProxyGetPostedOps(struct ncclComm* comm, int* added) {
   if (state->opsPool == NULL) return ncclInternalError;
   struct ncclProxyOpsPool* pool = state->opsPool;
 
-  struct ncclProxyArgs profArgs; // Only used for profiling purposes
   if (state->nextOps != -1) goto process_nextops;
 
   // If we have ops to progress, no need to block waiting for something to arrive or even wait for the lock
@@ -558,10 +577,10 @@ static ncclResult_t ncclProxyGetPostedOps(struct ncclComm* comm, int* added) {
   if (state->active == NULL) {
     pthread_mutex_lock(&pool->mutex);
     while (pool->nextOps == -1 && !state->stop) {
-      struct ncclProxyArgs profArgs; // Only used for profiling purposes
-      ncclProfilingRecord(&profArgs, 0, 0, ncclProxyProfileSleep);
+      int profId;
+      NCCLCHECK(ncclProfEventStart(comm->proxyState.profilerRecord, &profId, PROF_TYPE_SLEEP, 0));
       pthread_cond_wait(&pool->cond, &pool->mutex);
-      ncclProfilingRecord(&profArgs, 0, 0, ncclProxyProfileWakeup);
+      ncclProfEventTime(comm->proxyState.profilerRecord, profId, NCCL_PROF_TS_END);
     }
     if (state->stop) { // We might have been woken up to stop.
       pthread_mutex_unlock(&pool->mutex);
@@ -575,7 +594,8 @@ static ncclResult_t ncclProxyGetPostedOps(struct ncclComm* comm, int* added) {
   if (state->nextOps == -1) return ncclInternalError;
 
 process_nextops:
-  ncclProfilingRecord(&profArgs, 0, 0, ncclProxyProfileAppend);
+  int profId;
+  NCCLCHECK(ncclProfEventStart(comm->proxyState.profilerRecord, &profId, PROF_TYPE_APPEND, 0));
   TIME_START(2);
   int freeOp[NCCL_MAX_LOCAL_RANKS];
   int freeOpEnd[NCCL_MAX_LOCAL_RANKS];
@@ -619,8 +639,7 @@ process_nextops:
       }
     }
   }
-  profArgs.opCount = *added;
-  ncclProfilingRecord(&profArgs, 0, 0, ncclProxyProfileAppendEnd);
+  ncclProfEventTime(comm->proxyState.profilerRecord, profId, NCCL_PROF_TS_END);
   TIME_STOP(2);
   return ncclSuccess;
 }
@@ -685,8 +704,6 @@ void* ncclProxyProgress(void *comm_) {
   snprintf(threadName, NCCL_THREAD_NAMELEN, "NCCL Progress%2d", comm->cudaDev);
   nvtxNameOsThreadA(syscall(SYS_gettid), threadName);
 
-  int lastIdle = 0;
-  struct ncclProxyArgs profArgs; // Only used for profiling purposes
   while (state->stop == 0 && *comm->abortFlag == 0) {
     int idle = 1;
     ncclResult_t ret = progressOps(comm, state, state->active, &idle);
@@ -695,8 +712,6 @@ void* ncclProxyProgress(void *comm_) {
       INFO(NCCL_ALL,"%s:%d -> %d [Proxy Thread]", __FILE__, __LINE__, ret);
       return NULL;
     }
-    if (lastIdle == 0 && idle == 1) ncclProfilingRecord(&profArgs, 0, 0, ncclProxyProfileIdle);
-    if (lastIdle == 1 && idle == 0) ncclProfilingRecord(&profArgs, 0, 0, ncclProxyProfileActive);
     if (idle) {
       int added = 0;
       TIME_START(3);
@@ -710,7 +725,6 @@ void* ncclProxyProgress(void *comm_) {
         sched_yield(); // No request progressed. Let others run.
       }
     }
-    lastIdle = idle;
   }
   return NULL;
 }
@@ -759,7 +773,6 @@ ncclResult_t ncclProxyProgressDestroy(struct ncclComm* comm) {
     state->pools = next;
   }
 
-  ncclProfilingDump();
   ntraceProfilingDump();
   TIME_PRINT("Proxy");
   return ncclSuccess;
@@ -1033,7 +1046,6 @@ static ncclResult_t proxyConnSetupConnect(int type, struct ncclProxyLocalPeer* p
 }
 
 #include <poll.h>
-
 void* ncclProxyService(void* _args) {
   struct ncclComm* comm =  (struct ncclComm *) _args;
   if (CPU_COUNT(&comm->cpuAffinity)) sched_setaffinity(0, sizeof(cpu_set_t), &comm->cpuAffinity);
@@ -1043,6 +1055,8 @@ void* ncclProxyService(void* _args) {
     WARN("[Proxy Service] Failed to set CUDA device %d", comm->cudaDev);
   }
   if (CPU_COUNT(&comm->cpuAffinity)) sched_setaffinity(0, sizeof(cpu_set_t), &comm->cpuAffinity);
+
+  ncclProxyProfilingInit(comm);
 
   // Prepare poll descriptor
   struct ncclProxyConnectionPool connectionPool;

@@ -1081,7 +1081,7 @@ static ncclResult_t ncclCommInitRankFunc(struct ncclAsyncJob* job_) {
   int cudaDev = job->cudaDev;
   ncclResult_t res = ncclSuccess;
 
-  ncclProfInit();
+  NCCLCHECKGOTO(ncclProfInit(), res, cleanup);
 
   CUDACHECK(cudaSetDevice(cudaDev));
   // Set the maximum kernel stack size of all kernels to avoid

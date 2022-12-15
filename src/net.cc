@@ -9,6 +9,8 @@
 //#include <sys/stat.h>
 //#include <unistd.h>
 
+struct ncclProfRecord* g_currentProfilerRecord = NULL;
+
 static ncclNet_v6_t ncclNet_v4_as_v6;
 static ncclNet_v6_t ncclNet_v5_as_v6;
 static ncclNet_v4_t *ncclNet_v4;

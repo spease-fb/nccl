@@ -580,7 +580,7 @@ static ncclResult_t ncclProxyGetPostedOps(struct ncclComm* comm, int* added) {
       int profId;
       NCCLCHECK(ncclProfEventStart(comm->proxyState.profilerRecord, &profId, PROF_TYPE_SLEEP, 0));
       pthread_cond_wait(&pool->cond, &pool->mutex);
-      ncclProfEventTime(comm->proxyState.profilerRecord, profId, NCCL_PROF_TS_END);
+      NCCLCHECK(ncclProfEventTime(comm->proxyState.profilerRecord, profId, NCCL_PROF_TS_END));
     }
     if (state->stop) { // We might have been woken up to stop.
       pthread_mutex_unlock(&pool->mutex);
@@ -639,7 +639,7 @@ process_nextops:
       }
     }
   }
-  ncclProfEventTime(comm->proxyState.profilerRecord, profId, NCCL_PROF_TS_END);
+  NCCLCHECK(ncclProfEventTime(comm->proxyState.profilerRecord, profId, NCCL_PROF_TS_END));
   TIME_STOP(2);
   return ncclSuccess;
 }

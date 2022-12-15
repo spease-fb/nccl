@@ -99,6 +99,42 @@ ncclResult_t ncclInternalProfilerInit(int* active, ncclProfGetRecFn_t getRec) {
   return ncclSuccess;
 }
 
+ncclResult_t ncclInternalProfilerEventStart(struct ncclProfRecord* rec, int* id, int type, int kvsize, va_list va) {
+  uint64_t eventId = rec->nextId++;
+  int eventBlock = ID_BLOCK(eventId);
+  int eventIdx = ID_IDX(eventId);
+  if (eventIdx == 0) {
+    rec->events[eventBlock] = (struct ncclProfEvent*)malloc(sizeof(struct ncclProfEvent)*NCCL_PROF_MAX_EVENTS);
+    if (rec->events[eventBlock] == NULL) return ncclSystemError;
+  }
+
+  struct ncclProfEvent* e = rec->events[eventBlock]+eventIdx;
+  double time = profGettime();
+  for (int i=0; i<NCCL_PROF_TS_SIZE; i++) {
+    e->ts[i] = time;
+  }
+  e->type = type;
+  for (int i=0; i<kvsize; i++) {
+    e->kv[i] = va_arg(va, uint64_t);
+  }
+  *id = eventId;
+  return ncclSuccess;
+}
+
+ncclResult_t ncclInternalProfilerEventTime(struct ncclProfRecord *rec, int id, int tsId) {
+  rec->events[ID_BLOCK(id)][ID_IDX(id)].ts[tsId] = profGettime();
+  return ncclSuccess;
+}
+
+ncclResult_t ncclInternalProfilerFreeRec(struct ncclProfRecord* rec) {
+  for (int i=0; i<NCCL_PROF_MAX_EVENT_BLOCKS; i++) {
+    free(rec->events[i]);
+    rec->events[i] = NULL;
+  }
+  free(rec);
+  return ncclSuccess;
+}
+
 ncclResult_t ncclInternalProfilerExit() {
   int nrecs;
   struct ncclProfRecord** recs;
@@ -110,6 +146,9 @@ ncclResult_t ncclInternalProfilerExit() {
 ncclProf_v1_t ncclInternalProfiler = {
   "Internal",
   ncclInternalProfilerInit,
+  ncclInternalProfilerEventStart,
+  ncclInternalProfilerEventTime,
+  ncclInternalProfilerFreeRec,
   ncclInternalProfilerExit
 };
 

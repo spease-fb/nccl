@@ -41,6 +41,9 @@ typedef ncclResult_t (*ncclProfGetRecFn_t)(int* nRecs, struct ncclProfRecord_v1*
 typedef struct {
   const char* name;
   ncclResult_t (*init)(int* active, ncclProfGetRecFn_t getRec);
+  ncclResult_t (*eventStart)(struct ncclProfRecord_v1 *rec, int *id, int type, int kvsize, va_list args);
+  ncclResult_t (*eventTime)(struct ncclProfRecord_v1 *rec, int id, int tsId);
+  ncclResult_t (*freeRec)(struct ncclProfRecord_v1 *rec);
   ncclResult_t (*exit)();
 }ncclProf_v1_t;
 
@@ -66,41 +69,32 @@ ncclResult_t ncclProfAddRec(struct ncclProfRecord** rec);
 #include <stdarg.h>
 
 static ncclResult_t ncclProfEventStart(struct ncclProfRecord* rec, int* id, int type, int kvsize, ...) {
-  if (ncclProfilerActive == 0) return ncclSuccess;
-
-  uint64_t eventId = rec->nextId++;
-  int eventBlock = ID_BLOCK(eventId);
-  int eventIdx = ID_IDX(eventId);
-  if (eventIdx == 0) {
-    rec->events[eventBlock] = (struct ncclProfEvent*)malloc(sizeof(struct ncclProfEvent)*NCCL_PROF_MAX_EVENTS);
-    if (rec->events[eventBlock] == NULL) return ncclSystemError;
+  if (ncclProfilerActive == 0) {
+    return ncclSuccess;
   }
 
-  struct ncclProfEvent* e = rec->events[eventBlock]+eventIdx;
-  double time = profGettime();
-  for (int i=0; i<NCCL_PROF_TS_SIZE; i++) e->ts[i] = time;
-  e->type = type;
-  va_list va;
-  va_start(va, kvsize);
-  for (int i=0; i<kvsize; i++) {
-    e->kv[i] = va_arg(va, uint64_t);
-  }
-  va_end(va);
-  *id = eventId;
-  return ncclSuccess;
+  va_list args;
+  va_start(args, kvsize);
+  const ncclResult_t r = ncclProfiler->eventStart(rec, id, type, kvsize, args);
+  va_end(args);
+
+  return r;
 }
-static void ncclProfEventTime(struct ncclProfRecord* rec, int id, int tsId) {
-  if (ncclProfilerActive == 0) return;
-  rec->events[ID_BLOCK(id)][ID_IDX(id)].ts[tsId] = profGettime();
+
+static ncclResult_t ncclProfEventTime(struct ncclProfRecord* rec, int id, int tsId) {
+  if (ncclProfilerActive == 0) {
+    return ncclSuccess;
+  }
+
+  return ncclProfiler->eventTime(rec, id, tsId);
 }
 
 static ncclResult_t ncclProfFreeRec(struct ncclProfRecord* rec) {
-  for (int i=0; i<NCCL_PROF_MAX_EVENT_BLOCKS; i++) {
-    free(rec->events[i]);
-    rec->events[i] = NULL;
+  if (ncclProfilerActive == 0) {
+    return ncclSuccess;
   }
-  free(rec);
-  return ncclSuccess;
+
+  return ncclProfiler->freeRec(rec);
 }
 
 ncclResult_t ncclProfInit();

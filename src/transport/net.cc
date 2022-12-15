@@ -909,7 +909,7 @@ static ncclResult_t sendProxyProgress(struct ncclComm* comm, struct ncclProxyArg
               __sync_synchronize();
               sub->transmitted += args->sliceSteps;
               for (uint64_t step=sub->transmitted-args->sliceSteps; step<sub->transmitted; step++)
-                ncclProfEventTime(comm->proxyState.profilerRecord, sub->profId[step % maxDepth], PROF_TS_SENDGPUWAIT);
+                NCCLCHECK(ncclProfEventTime(comm->proxyState.profilerRecord, sub->profId[step % maxDepth], PROF_TS_SENDGPUWAIT));
               args->idle = 0;
               continue;
             }
@@ -925,8 +925,8 @@ static ncclResult_t sendProxyProgress(struct ncclComm* comm, struct ncclProxyArg
           TRACE(NCCL_NET, "sendProxy [%ld/%d] request %p done", sub->done, buffSlot, sub->requests[buffSlot]);
           sub->done += args->sliceSteps;
           for (uint64_t step=sub->done-args->sliceSteps; step<sub->done; step++) {
-            ncclProfEventTime(comm->proxyState.profilerRecord, sub->profId[step%maxDepth], PROF_TS_SENDWAIT);
-            ncclProfEventTime(comm->proxyState.profilerRecord, sub->profId[step%maxDepth], NCCL_PROF_TS_END);
+            NCCLCHECK(ncclProfEventTime(comm->proxyState.profilerRecord, sub->profId[step%maxDepth], PROF_TS_SENDWAIT));
+            NCCLCHECK(ncclProfEventTime(comm->proxyState.profilerRecord, sub->profId[step%maxDepth], NCCL_PROF_TS_END));
           }
 
           if (resources->shared == 0) {
@@ -1058,7 +1058,7 @@ static ncclResult_t recvProxyProgress(struct ncclComm* comm, struct ncclProxyArg
             struct ncclProxySubArgs* sub = subGroup + i;
             sub->received += args->sliceSteps;
             for (uint64_t step=sub->received-args->sliceSteps; step<sub->received; step++)
-              ncclProfEventTime(comm->proxyState.profilerRecord, sub->profId[step%maxDepth], PROF_TS_RECVWAIT);
+              NCCLCHECK(ncclProfEventTime(comm->proxyState.profilerRecord, sub->profId[step%maxDepth], PROF_TS_RECVWAIT));
             if (step < sub->nsteps) {
               struct recvResources* resources = (struct recvResources*) (sub->connection->transportResources);
               if (resources->useGdr) needFlush |= resources->needFlush;
@@ -1112,7 +1112,7 @@ static ncclResult_t recvProxyProgress(struct ncclComm* comm, struct ncclProxyArg
             struct ncclProxySubArgs* sub = subGroup + i;
             sub->transmitted += args->sliceSteps;
             for (uint64_t step=sub->transmitted-args->sliceSteps; step<sub->transmitted; step++)
-              ncclProfEventTime(comm->proxyState.profilerRecord, sub->profId[step%maxDepth], PROF_TS_FLUSHWAIT);
+              NCCLCHECK(ncclProfEventTime(comm->proxyState.profilerRecord, sub->profId[step%maxDepth], PROF_TS_FLUSHWAIT));
             if (step < sub->nsteps) {
               __sync_synchronize();
               struct recvResources* resources = (struct recvResources*) (sub->connection->transportResources);
@@ -1141,8 +1141,8 @@ static ncclResult_t recvProxyProgress(struct ncclComm* comm, struct ncclProxyArg
               sub->transmitted > sub->done) {
             sub->done += args->sliceSteps;
             for (uint64_t step=sub->done-args->sliceSteps; step<sub->done; step++) {
-              ncclProfEventTime(comm->proxyState.profilerRecord, sub->profId[step%maxDepth], PROF_TS_RECVGPUWAIT);
-              ncclProfEventTime(comm->proxyState.profilerRecord, sub->profId[step%maxDepth], NCCL_PROF_TS_END);
+              NCCLCHECK(ncclProfEventTime(comm->proxyState.profilerRecord, sub->profId[step%maxDepth], PROF_TS_RECVGPUWAIT));
+              NCCLCHECK(ncclProfEventTime(comm->proxyState.profilerRecord, sub->profId[step%maxDepth], NCCL_PROF_TS_END));
             }
             args->idle = 0;
             if (sub->done == sub->nsteps) {

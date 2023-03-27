@@ -72,9 +72,6 @@ static ncclResult_t ncclTopoGetInterCpuBw(struct ncclTopoNode* cpu, float* bw) {
   if (cpu->cpu.arch == NCCL_TOPO_CPU_ARCH_X86 && cpu->cpu.vendor == NCCL_TOPO_CPU_VENDOR_INTEL) {
     *bw = cpu->cpu.model == NCCL_TOPO_CPU_TYPE_SKL ? SKL_QPI_BW : QPI_BW;
   }
-  if (cpu->cpu.arch == NCCL_TOPO_CPU_ARCH_X86 && cpu->cpu.vendor == NCCL_TOPO_CPU_VENDOR_AMD) {
-    *bw = AMD_BW;
-  }
   if (cpu->cpu.arch == NCCL_TOPO_CPU_ARCH_X86 && cpu->cpu.vendor == NCCL_TOPO_CPU_VENDOR_ZHAOXIN) {
     *bw = cpu->cpu.model ==  NCCL_TOPO_CPU_TYPE_YONGFENG ? YONGFENG_ZPI_BW : ZPI_BW;
   }
@@ -818,6 +815,6 @@ ncclResult_t ncclTopoGetLocalRank(struct ncclTopoSystem* system, int rank, int* 
       return ncclSuccess;
     }
   }
-  WARN("Could not find local GPU with rank %d\n", rank);
+  WARN("Could not find local GPU with rank %d", rank);
   return ncclInternalError;
 }
